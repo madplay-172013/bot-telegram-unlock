@@ -142,6 +142,29 @@ async def addcreditos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(f"✅ Créditos agregados a {target_id}")
 
+async def usuarios(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ No autorizado.")
+        return
+
+    docs = db.collection("usuarios").stream()
+
+    mensaje = "📊 Lista de usuarios:\n\n"
+
+    for doc in docs:
+        data = doc.to_dict()
+        nombre = data.get("nombre", "Sin nombre")
+        creditos = data.get("creditos", 0)
+        activo = data.get("activo", False)
+
+        estado = "🟢" if activo else "🔴"
+
+        mensaje += f"{estado} {nombre} → {creditos} créditos\n"
+
+    await update.message.reply_text(mensaje)    
+
 async def bloquear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -276,14 +299,17 @@ async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     else:
-        # Ignorar mensajes innecesarios del sistema
-        return
+        await update.message.reply_text(
+            "Elige una opción del menú.",
+            reply_markup=obtener_menu_principal()
+        )
 
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("saldo", saldo))
 app.add_handler(CommandHandler("addcreditos", addcreditos))
+app.add_handler(CommandHandler("usuarios", usuarios))
 app.add_handler(CommandHandler("bloquear", bloquear))
 app.add_handler(CommandHandler("desbloquear", desbloquear))
 app.add_handler(CommandHandler("historial", ver_historial))
