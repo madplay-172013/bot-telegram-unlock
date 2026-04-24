@@ -26,6 +26,13 @@ estado_usuario = {}
 def es_admin(user_id):
     return user_id == ADMIN_ID
 
+def usuario_autorizado(user_id):
+    if user_id == ADMIN_ID:
+        return True
+
+    user = obtener_usuario(user_id)
+    return user.get("activo", False)
+
 def obtener_usuario(user_id):
     ref = db.collection("usuarios").document(str(user_id))
     doc = ref.get()
@@ -76,7 +83,7 @@ def obtener_menu_operador():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
-    if not es_admin(user_id):
+    if not usuario_autorizado(user_id):
         await update.message.reply_text("❌ No tienes acceso a este sistema.")
         return
 
@@ -186,7 +193,7 @@ async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto_original = update.message.text.strip()
     texto = texto_original.upper()
 
-    if not es_admin(user_id):
+    if not usuario_autorizado(user_id):
         await update.message.reply_text("❌ No tienes acceso a este sistema.")
         return
 
