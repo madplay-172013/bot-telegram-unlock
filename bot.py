@@ -3,14 +3,21 @@ from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
+import os
+import json
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-cred = credentials.Certificate("credenciales.json")
+# 🔥 Firebase desde variable
+cred_json = os.getenv("FIREBASE_CRED")
+cred_dict = json.loads(cred_json)
+
+cred = credentials.Certificate(cred_dict)
 firebase_admin.initialize_app(cred)
+
 db = firestore.client()
 
-import os
+# 🔐 Token seguro
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_ID = 5714303692
 
