@@ -112,19 +112,33 @@ async def addcreditos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         target_id = context.args[0]
         cantidad = int(context.args[1])
+        nombre = context.args[2] if len(context.args) > 2 else None
     except:
-        await update.message.reply_text("Uso: /addcreditos ID CANTIDAD")
+        await update.message.reply_text("Uso: /addcreditos ID CANTIDAD NOMBRE(opcional)")
         return
 
     ref = db.collection("usuarios").document(str(target_id))
     doc = ref.get()
 
     if not doc.exists:
-        ref.set({"creditos": cantidad, "activo": True})
+        data = {
+            "creditos": cantidad,
+            "activo": True
+        }
+        if nombre:
+            data["nombre"] = nombre
+
+        ref.set(data)
     else:
         data = doc.to_dict()
         nuevos = data.get("creditos", 0) + cantidad
-        ref.update({"creditos": nuevos})
+
+        update_data = {"creditos": nuevos}
+
+        if nombre:
+            update_data["nombre"] = nombre
+
+        ref.update(update_data)
 
     await update.message.reply_text(f"✅ Créditos agregados a {target_id}")
 
