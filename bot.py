@@ -21,7 +21,7 @@ db = firestore.client()
 # Ejecutor para Playwright en hilo separado
 executor = ThreadPoolExecutor(max_workers=3)
 
-TOKEN = os.getenv("TELEGRAM_TOKEN")
+TOKEN = os.getenv("123456:ABCDEF_FAKE")
 ADMIN_ID = 5714303692
 
 estado_usuario = {}
