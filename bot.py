@@ -13,9 +13,15 @@ from web_engine import consultar_y_desbloquear
 
 # 🔥 Firebase
 cred_json = os.getenv("FIREBASE_CRED")
-cred_dict = json.loads(cred_json)
-cred = credentials.Certificate(cred_dict)
+
+if cred_json:
+    cred_dict = json.loads(cred_json)
+    cred = credentials.Certificate(cred_dict)
+else:
+    cred = credentials.Certificate("credenciales.json")
+
 firebase_admin.initialize_app(cred)
+
 db = firestore.client()
 
 # Ejecutor para Playwright en hilo separado
