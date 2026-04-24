@@ -321,10 +321,15 @@ async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             guardar_historial(user_id, operador, serial, creditos_actuales, exito=False)
 
-            await update.message.reply_text(
-                resultado["mensaje"],
-                reply_markup=obtener_menu_principal()
-            )
+            mensaje = resultado["mensaje"]
+
+        if len(mensaje) > 3500:
+            mensaje = mensaje[:3500] + "\n\n...mensaje cortado por ser muy largo."
+
+        await update.message.reply_text(
+            mensaje,
+            reply_markup=obtener_menu_principal()
+        )
 
         estado_usuario.pop(user_id, None)
 
