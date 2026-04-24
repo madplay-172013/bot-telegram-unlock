@@ -262,10 +262,8 @@ async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     else:
-        await update.message.reply_text(
-            "Elige una opción del menú.",
-            reply_markup=obtener_menu_principal()
-        )
+        # Ignorar mensajes innecesarios del sistema
+        return
 
 app = ApplicationBuilder().token(TOKEN).build()
 
