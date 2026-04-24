@@ -88,7 +88,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-        "✅ Bienvenido administrador",
+        "✅ Bienvenido al Sistema",
         reply_markup=obtener_menu_principal()
     )
 
