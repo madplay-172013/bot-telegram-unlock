@@ -350,4 +350,4 @@ app.add_handler(CommandHandler("historial", ver_historial))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, manejar_mensaje))
 
 print("Bot iniciado...")
-app.run_polling()
+app.run_polling(drop_pending_updates=True)
