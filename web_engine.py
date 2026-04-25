@@ -74,7 +74,24 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
             page.wait_for_timeout(2000)
 
             # intenta esperar cambio en la página
-            page.wait_for_selector(f"text={serial}", timeout=15000)
+            # esperar más tiempo real
+            page.wait_for_timeout(5000)
+
+            # verificar contenido de la página
+            page_text = page.inner_text("body")
+
+            if serial.upper() not in page_text.upper():
+                capturar(page, "3_sin_datos")
+                browser.close()
+                return {
+                    "exito": False,
+                    "screenshots": screenshots,
+                    "mensaje": (
+                        "⚠️ No se encontraron datos para esa serie.\n\n"
+                        "Verifica la serie y el operador.\n\n"
+                        "No se descontaron créditos."
+                    )
+                }
 
             page.wait_for_timeout(4000)
 
