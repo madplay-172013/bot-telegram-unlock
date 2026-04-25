@@ -71,7 +71,7 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
             query_btn.click()
 
             # 🔥 esperar a que aparezca el resultado REAL (no solo tiempo)
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(5000)
 
             # intenta esperar cambio en la página
             # esperar más tiempo real
