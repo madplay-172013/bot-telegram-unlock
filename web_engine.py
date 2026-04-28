@@ -1,6 +1,5 @@
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import os
-import shutil
 
 URL = "https://webops.clbo-hubtv.com/index.php"
 USUARIO = os.getenv("WEB_USER", "ssalgadclvtr")
@@ -8,15 +7,6 @@ PASSWORD = os.getenv("WEB_PASS", "SSalgado87")
 
 SCREENSHOTS_DIR = "/tmp/screenshots"
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
-
-
-def limpiar_screenshots():
-    try:
-        if os.path.exists(SCREENSHOTS_DIR):
-            shutil.rmtree(SCREENSHOTS_DIR)
-            os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
-    except Exception as e:
-        print(f"Error limpiando screenshots: {e}")
 
 
 def consultar_y_desbloquear(operador: str, serial: str) -> dict:
@@ -52,7 +42,7 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
 
             page.wait_for_timeout(7000)
 
-            # 3. Operador
+            # 3. Seleccionar operador
             if operador == "CLARO":
                 page.locator("select").select_option(label="Producción @ Claro, Chile")
             elif operador == "VTR":
@@ -60,45 +50,52 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
 
             page.wait_for_timeout(4000)
 
-            # 4. Menú
+            # 4. Abrir Query User → Device Query
             page.get_by_text("Query User", exact=True).click()
             page.wait_for_timeout(1500)
 
             page.get_by_text("Device Query", exact=True).click()
             page.wait_for_timeout(4000)
 
-            # 5. Buscar serial
-            search_input = page.locator('input:visible').last
+            # 5. Ingresar serial y presionar Query
+            search_input = page.locator("input:visible").last
             search_input.fill(serial)
 
             page.wait_for_timeout(1000)
 
-            query_btn = page.locator('button:has-text("Query")').first
+            query_btn = page.locator(
+                'button:has-text("Query"), input[value="Query"], a:has-text("Query")'
+            ).first
+
+            query_btn.wait_for(timeout=10000)
             query_btn.click()
 
-            page.wait_for_timeout(10000)
+            # Esperar a que aparezcan botones de operaciones (LOCK / UNLOCK / REBOOT)
+            try:
+                page.wait_for_selector(
+                    'button:has-text("Unlock"), button:has-text("Lock"), button:has-text("Reboot")',
+                    timeout=15000
+                )
+            except:
+             capturar(page, "3_sin_datos")
+             browser.close()
+             return {
+                 "exito": False,
+                 "screenshots": screenshots,
+                 "mensaje": (
+                     "⚠️ No se encontraron datos para esta serie.\n\n"
+                     "Verifica la serie y el operador.\n\n"
+                     "No se descontaron créditos."
+                )
+              }
 
-            page_text = page.inner_text("body")
-
-            if serial.upper() not in page_text.upper():
-                capturar(page, "3_sin_datos")
-                browser.close()
-                limpiar_screenshots()
-                return {
-                    "exito": False,
-                    "screenshots": screenshots,
-                    "mensaje": "⚠️ No se encontraron datos para esa serie.\n\nVerifica la serie y el operador."
-                }
-
-            page.wait_for_timeout(4000)
-
-            # 6. Unlock
+            # 6. Intentar botón Unlock directamente.
             try:
                 unlock_btn = page.locator(
                     'button:has-text("Unlock"), input[value="Unlock"], a:has-text("Unlock")'
                 ).first
 
-                unlock_btn.wait_for(timeout=10000)
+                unlock_btn.wait_for(timeout=12000)
 
                 page.once("dialog", lambda dialog: dialog.accept())
                 unlock_btn.click()
@@ -108,14 +105,18 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
             except PlaywrightTimeoutError:
                 capturar(page, "3_sin_boton_unlock")
                 browser.close()
-                limpiar_screenshots()
                 return {
                     "exito": False,
                     "screenshots": screenshots,
-                    "mensaje": "⚠️ No se encontró el botón UNLOCK."
+                    "mensaje": (
+                        "⚠️ No se encontró el botón UNLOCK.\n\n"
+                        "Puede que la serie no tenga datos cargados, que el operador no corresponda "
+                        "o que la web haya demorado demasiado.\n\n"
+                        "No se descontaron créditos."
+                    )
                 }
 
-            # 7. Refrescar
+            # 7. Refrescar con Query nuevamente
             try:
                 query_btn = page.locator(
                     'button:has-text("Query"), input[value="Query"], a:has-text("Query")'
@@ -124,22 +125,25 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
                 query_btn.wait_for(timeout=10000)
                 query_btn.click()
 
-                page.wait_for_timeout(7000)
+                page.wait_for_timeout(8000)
                 capturar(page, "4_resultado_final")
 
             except PlaywrightTimeoutError:
                 capturar(page, "4_error_refresco_query")
                 browser.close()
-                limpiar_screenshots()
                 return {
                     "exito": False,
                     "screenshots": screenshots,
-                    "mensaje": "⚠️ Unlock hecho, pero no se pudo refrescar."
+                    "mensaje": (
+                        "⚠️ Se ejecutó UNLOCK, pero no se pudo refrescar con QUERY.\n\n"
+                        "Revisa manualmente el estado del equipo.\n\n"
+                        "No se descontaron créditos automáticamente."
+                    )
                 }
 
             browser.close()
 
-            resultado = {
+            return {
                 "exito": True,
                 "screenshots": screenshots,
                 "mensaje": (
@@ -150,21 +154,23 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
                 )
             }
 
-            limpiar_screenshots()
-            return resultado
-
     except PlaywrightTimeoutError:
-        limpiar_screenshots()
         return {
             "exito": False,
             "screenshots": screenshots,
-            "mensaje": "⏱️ Tiempo de espera agotado."
+            "mensaje": (
+                "⏱️ Tiempo de espera agotado. La web tardó demasiado en responder.\n"
+                "No se descontaron créditos. Intenta nuevamente."
+            )
         }
 
     except Exception as e:
-        limpiar_screenshots()
         return {
             "exito": False,
             "screenshots": screenshots,
-            "mensaje": f"❌ Error inesperado:\n{str(e)}"
+            "mensaje": (
+                f"❌ Error inesperado al conectar con la web.\n"
+                f"No se descontaron créditos. Intenta nuevamente.\n\n"
+                f"Detalle técnico: {str(e)}"
+            )
         }
