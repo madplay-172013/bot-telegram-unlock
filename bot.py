@@ -1,6 +1,7 @@
 from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.request import HTTPXRequest
 
 import os
 import json
@@ -399,7 +400,14 @@ async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Elige una opción del menú.", reply_markup=obtener_menu_principal())
 
 
-app = ApplicationBuilder().token(TOKEN).build()
+request = HTTPXRequest(
+    connect_timeout=30,
+    read_timeout=30,
+    write_timeout=30,
+    pool_timeout=30
+)
+
+app = ApplicationBuilder().token(TOKEN).request(request).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("saldo", saldo))
@@ -412,3 +420,4 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, manejar_mensaje)
 
 print("Bot iniciado...")
 app.run_polling(drop_pending_updates=True)
+
