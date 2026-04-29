@@ -70,48 +70,39 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
             query_btn.wait_for(timeout=10000)
             query_btn.click()
 
-            # Esperar a que aparezcan botones de operaciones (LOCK / UNLOCK / REBOOT)
+            # Esperar que cargue el resultado después de Query
+            page.wait_for_timeout(8000)
+
+            # Validar si realmente encontró datos
+            page_text = page.inner_text("body").upper()
+
+            if "NO DATA" in page_text:
+                capturar(page, "3_sin_datos")
+                browser.close()
+                return {
+                    "exito": False,
+                    "screenshots": screenshots,
+                    "mensaje": (
+                        "⚠️ No se encontraron datos para esta serie en el operador seleccionado.\n\n"
+                        "Prueba con la otra compañía: CLARO o VTR.\n\n"
+                        "No se descontaron créditos."
+                    )
+                }
+
+            # Esperar botón UNLOCK solo si sí hay datos
             try:
                 page.wait_for_selector(
-                    'button:has-text("Unlock"), button:has-text("Lock"), button:has-text("Reboot")',
+                    'button:has-text("Unlock"), input[value="Unlock"], a:has-text("Unlock")',
                     timeout=15000
                 )
             except:
-             capturar(page, "3_sin_datos")
-             browser.close()
-             return {
-                 "exito": False,
-                 "screenshots": screenshots,
-                 "mensaje": (
-                     "⚠️ No se encontraron datos para esta serie.\n\n"
-                     "Verifica la serie y el operador.\n\n"
-                     "No se descontaron créditos."
-                )
-              }
-
-            # 6. Intentar botón Unlock directamente.
-            try:
-                unlock_btn = page.locator(
-                    'button:has-text("Unlock"), input[value="Unlock"], a:has-text("Unlock")'
-                ).first
-
-                unlock_btn.wait_for(timeout=12000)
-
-                page.once("dialog", lambda dialog: dialog.accept())
-                unlock_btn.click()
-
-                page.wait_for_timeout(5000)
-
-            except PlaywrightTimeoutError:
                 capturar(page, "3_sin_boton_unlock")
                 browser.close()
                 return {
                     "exito": False,
                     "screenshots": screenshots,
                     "mensaje": (
-                        "⚠️ No se encontró el botón UNLOCK.\n\n"
-                        "Puede que la serie no tenga datos cargados, que el operador no corresponda "
-                        "o que la web haya demorado demasiado.\n\n"
+                        "⚠️ Se cargó la búsqueda, pero no apareció el botón UNLOCK.\n\n"
                         "No se descontaron créditos."
                     )
                 }
