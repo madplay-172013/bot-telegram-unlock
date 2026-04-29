@@ -2,8 +2,8 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 import os
 
 URL = "https://webops.clbo-hubtv.com/index.php"
-USUARIO = os.getenv("WEB_USER", "ssalgadclvtr")
-PASSWORD = os.getenv("WEB_PASS", "SSalgado87")
+USUARIO = os.getenv("WEB_USER", "")
+PASSWORD = os.getenv("WEB_PASS", "")
 
 SCREENSHOTS_DIR = "/tmp/screenshots"
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
@@ -70,32 +70,47 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
             query_btn.wait_for(timeout=10000)
             query_btn.click()
 
-            # Esperar que cargue el resultado después de Query
+            # 6. Esperar resultado de la búsqueda
             page.wait_for_timeout(8000)
 
-            # Validar si realmente encontró datos
             page_text = page.inner_text("body").upper()
 
-            if "NO DATA" in page_text:
+            # Errores reales cuando la serie no corresponde al operador o no existe.
+            errores_sin_datos = [
+                "DEVICE BINDING NOT FOUND",
+                "DOESN'T EXIST",
+                "DOES NOT EXIST",
+                "NOT FOUND",
+                "NO DATA"
+            ]
+
+            if any(error in page_text for error in errores_sin_datos):
                 capturar(page, "3_sin_datos")
                 browser.close()
                 return {
                     "exito": False,
                     "screenshots": screenshots,
                     "mensaje": (
-                        "⚠️ No se encontraron datos para esta serie en el operador seleccionado.\n\n"
+                        "⚠️ La serie no corresponde al operador seleccionado o no tiene datos.\n\n"
                         "Prueba con la otra compañía: CLARO o VTR.\n\n"
                         "No se descontaron créditos."
                     )
                 }
 
-            # Esperar botón UNLOCK solo si sí hay datos
+            # 7. Presionar botón UNLOCK solo si no hubo error de datos
             try:
-                page.wait_for_selector(
-                    'button:has-text("Unlock"), input[value="Unlock"], a:has-text("Unlock")',
-                    timeout=15000
-                )
-            except:
+                unlock_btn = page.locator(
+                    'button:has-text("Unlock"), input[value="Unlock"], a:has-text("Unlock")'
+                ).first
+
+                unlock_btn.wait_for(timeout=15000)
+
+                page.once("dialog", lambda dialog: dialog.accept())
+                unlock_btn.click()
+
+                page.wait_for_timeout(5000)
+
+            except PlaywrightTimeoutError:
                 capturar(page, "3_sin_boton_unlock")
                 browser.close()
                 return {
@@ -107,7 +122,7 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
                     )
                 }
 
-            # 7. Refrescar con Query nuevamente
+            # 8. Refrescar con Query nuevamente
             try:
                 query_btn = page.locator(
                     'button:has-text("Query"), input[value="Query"], a:has-text("Query")'
