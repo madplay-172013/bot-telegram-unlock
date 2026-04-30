@@ -33,30 +33,23 @@ def usuario_autorizado(user_id):
 def obtener_usuario(user_id):
     ref = db.collection("usuarios").document(str(user_id))
     doc = ref.get()
-
     if not doc.exists:
         ref.set({"creditos": 0, "activo": True})
         return {"creditos": 0, "activo": True}
-
     return doc.to_dict()
 
 
 def descontar_credito(user_id):
     ref = db.collection("usuarios").document(str(user_id))
     doc = ref.get()
-
     if not doc.exists:
         return False, 0
-
     data = doc.to_dict()
     creditos = data.get("creditos", 0)
-
     if creditos <= 0:
         return False, creditos
-
     nuevos = creditos - 1
     ref.update({"creditos": nuevos})
-
     return True, nuevos
 
 
@@ -87,7 +80,7 @@ def obtener_menu_operador():
 
 def cortar_mensaje(mensaje, limite=3500):
     if len(mensaje) > limite:
-        return mensaje[:limite] + "\n\n...mensaje cortado por ser muy largo."
+        return mensaje[:limite] + "\n\n...mensaje cortado."
     return mensaje
 
 
@@ -105,10 +98,15 @@ async def enviar_screenshots_admin(context, user_id, operador, serial, screensho
         return
 
     labels = {
-        "3_sin_datos": "⚠️ Sin datos encontrados",
-        "3_sin_boton_unlock": "⚠️ Sin botón Unlock",
-        "4_error_refresco_query": "⚠️ Error refrescando",
-        "4_resultado_final": "✅ Resultado final",
+        "1_login": "🔐 Login",
+        "2_operador": "📡 Operador seleccionado",
+        "3_device_query": "🔍 Device Query abierto",
+        "4_query_resultado": "📋 Resultado Query",
+        "5_sin_datos": "⚠️ Sin datos EDM",
+        "5_datos_ok": "✅ Datos encontrados",
+        "6_post_unlock": "🔓 Post Unlock",
+        "7_resultado_final": "✅ Resultado final",
+        "7_error_query_final": "⚠️ Error Query final",
     }
 
     await context.bot.send_message(
@@ -125,7 +123,6 @@ async def enviar_screenshots_admin(context, user_id, operador, serial, screensho
     for path in screenshots:
         nombre = os.path.splitext(os.path.basename(path))[0]
         caption = labels.get(nombre, nombre)
-
         try:
             with open(path, "rb") as f:
                 await context.bot.send_photo(
@@ -143,11 +140,9 @@ async def enviar_screenshots_admin(context, user_id, operador, serial, screensho
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-
     if not usuario_autorizado(user_id):
         await update.message.reply_text("❌ No tienes acceso a este sistema.")
         return
-
     await update.message.reply_text(
         "✅ Bienvenido al Sistema",
         reply_markup=obtener_menu_principal()
@@ -157,11 +152,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = obtener_usuario(user_id)
-
     if not user.get("activo", True):
         await update.message.reply_text("❌ Usuario bloqueado.")
         return
-
     await update.message.reply_text(
         f"💰 Tienes {user.get('creditos', 0)} créditos disponibles"
     )
@@ -169,11 +162,9 @@ async def saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def addcreditos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-
     if user_id != ADMIN_ID:
         await update.message.reply_text("❌ No autorizado.")
         return
-
     try:
         target_id = context.args[0]
         cantidad = int(context.args[1])
@@ -181,10 +172,8 @@ async def addcreditos(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         await update.message.reply_text("Uso: /addcreditos ID CANTIDAD NOMBRE(opcional)")
         return
-
     ref = db.collection("usuarios").document(str(target_id))
     doc = ref.get()
-
     if not doc.exists:
         data = {"creditos": cantidad, "activo": True}
         if nombre:
@@ -196,80 +185,65 @@ async def addcreditos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if nombre:
             update_data["nombre"] = nombre
         ref.update(update_data)
-
     await update.message.reply_text(f"✅ Créditos agregados a {target_id}")
 
 
 async def usuarios(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-
     if user_id != ADMIN_ID:
         await update.message.reply_text("❌ No autorizado.")
         return
-
     mensaje = "📊 Lista de usuarios:\n\n"
-
     for doc in db.collection("usuarios").stream():
         data = doc.to_dict()
         estado = "🟢" if data.get("activo", False) else "🔴"
         nombre = data.get("nombre", "Sin nombre")
         creditos = data.get("creditos", 0)
         mensaje += f"{estado} {nombre} → {creditos} créditos\n"
-
     await update.message.reply_text(cortar_mensaje(mensaje))
 
 
 async def bloquear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-
     if user_id != ADMIN_ID:
         await update.message.reply_text("❌ No autorizado.")
         return
-
     try:
         target_id = context.args[0]
     except Exception:
         await update.message.reply_text("Uso: /bloquear ID")
         return
-
     db.collection("usuarios").document(str(target_id)).set({"activo": False}, merge=True)
     await update.message.reply_text(f"⛔ Usuario {target_id} bloqueado")
 
 
 async def desbloquear_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-
     if user_id != ADMIN_ID:
         await update.message.reply_text("❌ No autorizado.")
         return
-
     try:
         target_id = context.args[0]
     except Exception:
         await update.message.reply_text("Uso: /desbloquear ID")
         return
-
     db.collection("usuarios").document(str(target_id)).set({"activo": True}, merge=True)
     await update.message.reply_text(f"✅ Usuario {target_id} desbloqueado")
 
 
 async def ver_historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-
     if user_id != ADMIN_ID:
         await update.message.reply_text("❌ No autorizado.")
         return
-
     docs = (
         db.collection("historial")
         .order_by("fecha", direction=firestore.Query.DESCENDING)
         .limit(5)
         .stream()
     )
-
     mensaje = "📜 Últimas consultas:\n\n"
     count = 0
-
     for doc in docs:
         data = doc.to_dict()
         resultado = "✅" if data.get("exito") else "❌"
@@ -281,16 +255,15 @@ async def ver_historial(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"----------------------\n"
         )
         count += 1
-
     if count == 0:
         mensaje = "No hay historial aún."
-
     await update.message.reply_text(cortar_mensaje(mensaje))
 
 
 async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    texto = update.message.text.strip().upper()
+    texto = update.message.text.strip()
+    texto_upper = texto.upper()
 
     if not usuario_autorizado(user_id):
         await update.message.reply_text("❌ No tienes acceso a este sistema.")
@@ -302,14 +275,16 @@ async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Usuario bloqueado.")
         return
 
-    if texto == "💰 VER SALDO":
+    # ── Ver saldo ────────────────────────────────────────────────────────────────
+    if texto_upper == "💰 VER SALDO":
         await update.message.reply_text(
             f"💰 Tienes {user.get('creditos', 0)} créditos disponibles",
             reply_markup=obtener_menu_principal()
         )
         return
 
-    if texto == "🆕 NUEVA CONSULTA":
+    # ── Nueva consulta ───────────────────────────────────────────────────────────
+    if texto_upper == "🆕 NUEVA CONSULTA":
         estado_usuario[user_id] = {"paso": "esperando_operador"}
         await update.message.reply_text(
             "¿El equipo es CLARO o VTR?",
@@ -317,33 +292,40 @@ async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if user_id in estado_usuario and estado_usuario[user_id].get("paso") == "esperando_operador":
-        if texto not in ["CLARO", "VTR"]:
+    estado = estado_usuario.get(user_id, {})
+    paso = estado.get("paso", "")
+
+    # ── Esperando operador ───────────────────────────────────────────────────────
+    if paso == "esperando_operador":
+        if texto_upper not in ["CLARO", "VTR"]:
             await update.message.reply_text(
                 "❌ Debes elegir CLARO o VTR.",
                 reply_markup=obtener_menu_operador()
             )
             return
-
-        estado_usuario[user_id]["operador"] = texto
+        estado_usuario[user_id]["operador"] = texto_upper
         estado_usuario[user_id]["paso"] = "esperando_serial"
-
         await update.message.reply_text(
-            "Envíame la serie del equipo en mayúsculas, tal como aparece en pantalla.\n"
-            "Ejemplo: E77BZG987654321"
+            "Envíame la serie del equipo en mayúsculas.\n"
+            "Ejemplo: E77BYG243900180"
         )
         return
 
-    if user_id in estado_usuario and estado_usuario[user_id].get("paso") == "esperando_serial":
-        serial = texto
-        operador = estado_usuario[user_id]["operador"]
+    # ── Esperando serial ─────────────────────────────────────────────────────────
+    if paso == "esperando_serial":
+        serial = texto_upper
+        operador = estado["operador"]
 
         if not serial.isalnum():
-            await update.message.reply_text("❌ La serie solo debe contener letras y números.")
+            await update.message.reply_text(
+                "❌ La serie solo debe contener letras y números."
+            )
             return
 
         if len(serial) < 10 or len(serial) > 20:
-            await update.message.reply_text("❌ La serie debe tener entre 10 y 20 caracteres.")
+            await update.message.reply_text(
+                "❌ La serie debe tener entre 10 y 20 caracteres."
+            )
             return
 
         creditos_actuales = user.get("creditos", 0)
@@ -365,45 +347,84 @@ async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Esto puede tardar unos segundos, por favor espera."
         )
 
-        loop = asyncio.get_event_loop()
-        resultado = await loop.run_in_executor(
-            executor,
-            consultar_y_desbloquear,
-            operador,
-            serial
-        )
+        try:
+            loop = asyncio.get_event_loop()
+            resultado = await loop.run_in_executor(
+                executor,
+                consultar_y_desbloquear,
+                operador,
+                serial
+            )
+        except Exception as e:
+            print(f"Error en executor: {e}")
+            await update.message.reply_text(
+                "❌ Ocurrió un error inesperado. No se descontaron créditos.",
+                reply_markup=obtener_menu_principal()
+            )
+            estado_usuario.pop(user_id, None)
+            return
 
         operador_final = resultado.get("operador", operador)
         screenshots = resultado.get("screenshots", [])
+        sin_datos_edm = resultado.get("sin_datos_edm", False)
 
+        # Enviar screenshots al admin siempre
         if screenshots:
-            await enviar_screenshots_admin(context, user_id, operador_final, serial, screenshots)
+            await enviar_screenshots_admin(
+                context, user_id, operador_final, serial, screenshots
+            )
             limpiar_screenshots_usados(screenshots)
 
         if resultado["exito"]:
+            # ✅ ÉXITO — descontar crédito SOLO aquí
             ok, creditos_restantes = descontar_credito(user_id)
-            guardar_historial(user_id, operador_final, serial, creditos_restantes, exito=True)
-
-            mensaje = f"{resultado['mensaje']}\n\n💰 Créditos restantes: {creditos_restantes}"
-
+            guardar_historial(
+                user_id, operador_final, serial, creditos_restantes, exito=True
+            )
+            mensaje = (
+                f"{resultado['mensaje']}\n\n"
+                f"💰 Créditos restantes: {creditos_restantes}"
+            )
             await update.message.reply_text(
                 cortar_mensaje(mensaje),
                 reply_markup=obtener_menu_principal(),
                 parse_mode="Markdown"
             )
-        else:
-            guardar_historial(user_id, operador_final, serial, creditos_actuales, exito=False)
 
+        elif sin_datos_edm:
+            # ⚠️ Sin datos EDM — NO descontar crédito
+            # Informar y devolver al menú para que intente con otra compañía
+            guardar_historial(
+                user_id, operador_final, serial, creditos_actuales, exito=False
+            )
             await update.message.reply_text(
                 cortar_mensaje(resultado["mensaje"]),
-                reply_markup=obtener_menu_principal()
+                reply_markup=obtener_menu_principal(),
+                parse_mode="Markdown"
+            )
+
+        else:
+            # ❌ Error técnico — NO descontar crédito
+            guardar_historial(
+                user_id, operador_final, serial, creditos_actuales, exito=False
+            )
+            await update.message.reply_text(
+                cortar_mensaje(resultado["mensaje"]),
+                reply_markup=obtener_menu_principal(),
+                parse_mode="Markdown"
             )
 
         estado_usuario.pop(user_id, None)
         return
 
-    await update.message.reply_text("Elige una opción del menú.", reply_markup=obtener_menu_principal())
+    # ── Sin estado activo ────────────────────────────────────────────────────────
+    await update.message.reply_text(
+        "Elige una opción del menú.",
+        reply_markup=obtener_menu_principal()
+    )
 
+
+# ── Configuración y arranque ─────────────────────────────────────────────────
 
 request = HTTPXRequest(
     connect_timeout=30,
