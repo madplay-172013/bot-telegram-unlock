@@ -27,6 +27,10 @@ def consultar_y_desbloquear(serial: str) -> dict:
             "text=Customer Information",
             "text=TiVO Contract Details",
             "text=Device Metadata",
+            "text=Operations",
+            "text=Uptime",
+            "text=CPU",
+            "text=EDM locking status",
         ]
 
         textos_validos = [
@@ -38,9 +42,17 @@ def consultar_y_desbloquear(serial: str) -> dict:
             "CUSTOMER INFORMATION",
             "TIVO CONTRACT DETAILS",
             "DEVICE METADATA",
+            "UPTIME",
+            "CPU TEMPERATURE",
+            "EDM LOCKING STATUS",
         ]
 
-        for _ in range(20):
+        for _ in range(25):
+            try:
+                page.mouse.wheel(0, 3000)
+            except Exception:
+                pass
+
             for selector in selectores_validos:
                 try:
                     if page.locator(selector).count() > 0:
