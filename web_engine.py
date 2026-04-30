@@ -9,7 +9,7 @@ SCREENSHOTS_DIR = "/tmp/screenshots"
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
 
-def consultar_y_desbloquear(serial: str) -> dict:
+def consultar_y_desbloquear(operador: str, serial: str) -> dict:
     screenshots = []
 
     def capturar(page, nombre):
@@ -17,19 +17,32 @@ def consultar_y_desbloquear(serial: str) -> dict:
         page.screenshot(path=path)
         screenshots.append(path)
 
+    def pagina_tiene_error_edm(page):
+        try:
+            texto = page.inner_text("body").upper()
+        except Exception:
+            return False
+
+        errores = [
+            "NO EDM INFO AVAILABLE",
+            "EDM API SERVICE UNREACHABLE",
+            "HARDWARE SERIAL NUMBER NOT FOUND",
+            "THE STB WASN'T FOUND",
+            "NO DATA",
+        ]
+
+        return any(error in texto for error in errores)
+
     def tiene_data_real(page):
         selectores_validos = [
             "text=Device Status",
             "text=STB basic status",
             "text=Remote Control Unit",
             "text=TiVo Remote",
-            "text=Connected",
             "text=Customer Information",
             "text=TiVO Contract Details",
             "text=Device Metadata",
-            "text=Operations",
             "text=Uptime",
-            "text=CPU",
             "text=EDM locking status",
         ]
 
@@ -38,16 +51,14 @@ def consultar_y_desbloquear(serial: str) -> dict:
             "STB BASIC STATUS",
             "REMOTE CONTROL UNIT",
             "TIVO REMOTE",
-            "CONNECTED",
             "CUSTOMER INFORMATION",
             "TIVO CONTRACT DETAILS",
             "DEVICE METADATA",
             "UPTIME",
-            "CPU TEMPERATURE",
             "EDM LOCKING STATUS",
         ]
 
-        for _ in range(25):
+        for _ in range(20):
             try:
                 page.mouse.wheel(0, 3000)
             except Exception:
@@ -70,10 +81,6 @@ def consultar_y_desbloquear(serial: str) -> dict:
             page.wait_for_timeout(1000)
 
         return False
-
-    def ir_a_inicio(page):
-        page.goto(URL, timeout=30000)
-        page.wait_for_timeout(3000)
 
     def seleccionar_operador(page, operador):
         if operador == "CLARO":
@@ -107,14 +114,6 @@ def consultar_y_desbloquear(serial: str) -> dict:
 
         return query_btn
 
-    def probar_operador(page, operador, serial):
-        ir_a_inicio(page)
-        seleccionar_operador(page, operador)
-        abrir_device_query(page)
-        query_btn = buscar_serial(page, serial)
-        ok = tiene_data_real(page)
-        return ok, query_btn
-
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(
@@ -137,31 +136,29 @@ def consultar_y_desbloquear(serial: str) -> dict:
             page.locator("button:visible").first.click()
             page.wait_for_timeout(7000)
 
-            # Probar VTR primero
-            operador_final = "VTR"
-            ok, query_btn = probar_operador(page, operador_final, serial)
+            # Operador elegido manualmente por el usuario
+            seleccionar_operador(page, operador)
+            abrir_device_query(page)
+            query_btn = buscar_serial(page, serial)
 
-            # Si VTR no tiene data real, probar CLARO
-            if not ok:
-                operador_final = "CLARO"
-                ok, query_btn = probar_operador(page, operador_final, serial)
+            # Validar data real solo en el operador elegido
+            ok = tiene_data_real(page)
 
-            # Si ninguno tiene data real, error sin descontar
-            if not ok:
+            if not ok or pagina_tiene_error_edm(page):
                 capturar(page, "3_sin_datos")
                 browser.close()
                 return {
                     "exito": False,
-                    "operador": "AUTO",
+                    "operador": operador,
                     "screenshots": screenshots,
                     "mensaje": (
-                        "⚠️ No se encontraron datos reales para esta serie en VTR ni en CLARO.\n\n"
-                        "Verifica que la serie esté correcta.\n\n"
-                        "No se descontaron créditos."
+                        f"⚠️ No se encontraron datos reales en {operador}.\n\n"
+                        f"Verifica la serie o prueba con la otra compañía.\n\n"
+                        f"No se descontaron créditos."
                     )
                 }
 
-            # Unlock solo en operador con data real
+            # Unlock solo si hay data real
             try:
                 unlock_btn = page.locator(
                     'button:has-text("Unlock"), input[value="Unlock"], a:has-text("Unlock")'
@@ -177,7 +174,7 @@ def consultar_y_desbloquear(serial: str) -> dict:
                 browser.close()
                 return {
                     "exito": False,
-                    "operador": operador_final,
+                    "operador": operador,
                     "screenshots": screenshots,
                     "mensaje": (
                         "⚠️ Se encontraron datos reales, pero no apareció el botón UNLOCK.\n\n"
@@ -201,7 +198,7 @@ def consultar_y_desbloquear(serial: str) -> dict:
                 browser.close()
                 return {
                     "exito": False,
-                    "operador": operador_final,
+                    "operador": operador,
                     "screenshots": screenshots,
                     "mensaje": (
                         "⚠️ Se ejecutó UNLOCK, pero no se pudo refrescar con QUERY.\n\n"
@@ -214,11 +211,11 @@ def consultar_y_desbloquear(serial: str) -> dict:
 
             return {
                 "exito": True,
-                "operador": operador_final,
+                "operador": operador,
                 "screenshots": screenshots,
                 "mensaje": (
                     f"✅ *Proceso completado correctamente*\n\n"
-                    f"📡 Operador detectado: {operador_final}\n"
+                    f"📡 Operador: {operador}\n"
                     f"🔢 Serie: {serial}\n\n"
                     f"Equipo verificado y desbloqueado correctamente."
                 )
@@ -227,7 +224,7 @@ def consultar_y_desbloquear(serial: str) -> dict:
     except PlaywrightTimeoutError:
         return {
             "exito": False,
-            "operador": "AUTO",
+            "operador": operador,
             "screenshots": screenshots,
             "mensaje": (
                 "⏱️ Tiempo de espera agotado. La web tardó demasiado en responder.\n"
@@ -238,7 +235,7 @@ def consultar_y_desbloquear(serial: str) -> dict:
     except Exception as e:
         return {
             "exito": False,
-            "operador": "AUTO",
+            "operador": operador,
             "screenshots": screenshots,
             "mensaje": (
                 f"❌ Error inesperado al conectar con la web.\n"
@@ -246,3 +243,4 @@ def consultar_y_desbloquear(serial: str) -> dict:
                 f"Detalle técnico: {str(e)}"
             )
         }
+
