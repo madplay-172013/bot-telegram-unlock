@@ -12,19 +12,29 @@ os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 def consultar_y_desbloquear(operador: str, serial: str) -> dict:
     screenshots = []
 
-    def capturar(page, nombre):
+    def capturar(page, nombre, selector_foco=None):
+        """
+        Captura screenshot. Si se pasa selector_foco, hace scroll hasta ese
+        elemento para que quede visible en el centro de la captura.
+        """
         path = f"{SCREENSHOTS_DIR}/{nombre}.png"
         try:
+            if selector_foco:
+                try:
+                    elem = page.locator(selector_foco).first
+                    elem.scroll_into_view_if_needed(timeout=3000)
+                    page.wait_for_timeout(500)
+                except Exception:
+                    pass
             page.screenshot(path=path, full_page=True)
             screenshots.append(path)
         except Exception as e:
             print(f"Error capturando screenshot {nombre}: {e}")
 
-    def pagina_tiene_error_edm(page):
+    def pagina_tiene_error_edm_real(page):
         """
-        Error EDM real = los avisos amarillos de EDM aparecen
-        Y además NO hay Device Status visible.
-        Si hay Device Status, NO es error aunque aparezca el aviso de binding.
+        Retorna True SOLO si hay error EDM Y además NO hay Device Status.
+        'Device Binding not found' NO es error — puede aparecer junto a datos reales.
         """
         try:
             texto = page.inner_text("body").upper()
@@ -35,34 +45,33 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
             "NO EDM INFO AVAILABLE",
             "EDM API SERVICE UNREACHABLE",
         ]
-
         tiene_error_edm = any(e in texto for e in errores_edm)
         if not tiene_error_edm:
             return False
 
-        # Aunque haya error EDM, si hay Device Status = hay datos reales
+        # Si hay Device Status, hay datos reales aunque haya error EDM
         indicadores_datos = [
             "DEVICE STATUS",
             "STB BASIC STATUS",
-            "CUSTOMER INFORMATION",
-            "TIVO CONTRACT DETAILS",
-            "DEVICE METADATA",
+            "REMOTE CONTROL UNIT",
             "UPTIME",
             "EDM LOCKING STATUS",
         ]
         tiene_datos = any(ind in texto for ind in indicadores_datos)
-
-        # Solo es error real si hay mensaje EDM Y no hay datos
         return not tiene_datos
 
     def tiene_data_real(page):
         """
-        Espera hasta 30s a que aparezca Device Status u otros indicadores.
-        Device Binding not found puede coexistir con datos reales — no es bloqueante.
+        Espera hasta 45s a que aparezca Device Status.
+        - Primeros 15s: chequea cada 3s (da tiempo al JS de la web)
+        - Siguientes 30s: chequea cada 3s
+        Retorna True si encuentra datos, False si no.
         """
         indicadores = [
             "DEVICE STATUS",
             "STB BASIC STATUS",
+            "REMOTE CONTROL UNIT",
+            "TIVO REMOTE",
             "CUSTOMER INFORMATION",
             "TIVO CONTRACT DETAILS",
             "DEVICE METADATA",
@@ -72,6 +81,8 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
         selectores = [
             "text=Device Status",
             "text=STB basic status",
+            "text=Remote Control Unit",
+            "text=TiVo Remote",
             "text=Customer Information",
             "text=TiVO Contract Details",
             "text=Device Metadata",
@@ -79,33 +90,38 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
             "text=EDM locking status",
         ]
 
-        for intento in range(15):  # 15 x 2s = 30s máximo
-            # Si hay error EDM real (sin datos), salir rápido
-            if pagina_tiene_error_edm(page):
-                print(f"  [intento {intento+1}] Error EDM detectado sin datos reales")
+        # Espera inicial fija de 6s — la web tarda ese tiempo mínimo en cargar EDM
+        print(f"  Esperando carga inicial EDM (6s)...")
+        page.wait_for_timeout(6000)
+
+        # Luego chequeamos hasta 45s más (15 intentos x 3s)
+        for intento in range(15):
+            # Error EDM real sin datos → salir inmediatamente
+            if pagina_tiene_error_edm_real(page):
+                print(f"  [intento {intento+1}] Error EDM real detectado")
                 return False
 
-            # Buscar selectores directos
+            # Buscar selectores
             for selector in selectores:
                 try:
                     if page.locator(selector).count() > 0:
-                        print(f"  [intento {intento+1}] Datos encontrados: {selector}")
+                        print(f"  [intento {intento+1}] ✅ Datos encontrados: {selector}")
                         return True
                 except Exception:
                     pass
 
-            # Buscar en texto del body
+            # Buscar en body
             try:
                 texto = page.inner_text("body").upper()
                 for ind in indicadores:
                     if ind in texto:
-                        print(f"  [intento {intento+1}] Datos encontrados en body: {ind}")
+                        print(f"  [intento {intento+1}] ✅ Datos encontrados en body: {ind}")
                         return True
             except Exception:
                 pass
 
-            print(f"  [intento {intento+1}] Esperando datos...")
-            page.wait_for_timeout(2000)
+            print(f"  [intento {intento+1}] Sin datos aún, esperando 3s...")
+            page.wait_for_timeout(3000)
 
         return False
 
@@ -118,7 +134,7 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
         inputs.nth(1).fill(PASSWORD)
         page.wait_for_timeout(1000)
         page.locator("button:visible").first.click()
-        page.wait_for_timeout(7000)
+        page.wait_for_timeout(8000)
 
     def seleccionar_operador(page, operador):
         if operador == "CLARO":
@@ -143,14 +159,13 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
         ).first
         query_btn.wait_for(timeout=10000)
         query_btn.click()
-        page.wait_for_timeout(10000)
+        # NO ponemos wait fijo aquí — tiene_data_real maneja la espera
 
     def ejecutar_unlock(page):
         """
-        Hay DOS dialogs consecutivos:
-        1. "Do you want to unlock the device?" → Aceptar
-        2. "Unlock sent"                        → Aceptar
-        page.on() cubre ambos automáticamente.
+        Dos dialogs consecutivos:
+        1. "Do you want to unlock the device?" → Aceptar (espera ~2s)
+        2. "Unlock sent"                        → Aceptar (espera ~3s)
         """
         try:
             unlock_btn = page.locator(
@@ -166,19 +181,25 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
 
         page.on("dialog", handle_dialog)
         unlock_btn.click()
-        # Esperar suficiente para que ambos dialogs se resuelvan
+
+        # Esperar suficiente para que ambos dialogs se disparen y resuelvan
+        # Dialog 1 aparece ~2s, Dialog 2 aparece ~3s después
         page.wait_for_timeout(8000)
+
         page.remove_listener("dialog", handle_dialog)
         return True
 
     def ejecutar_query_final(page):
-        """Query final para refrescar estado (candado rojo → verde)."""
+        """Query final para ver candado rojo → verde."""
         query_btn = page.locator(
             'button:has-text("Query"), input[value="Query"], a:has-text("Query")'
         ).first
         query_btn.wait_for(timeout=10000)
         query_btn.click()
-        page.wait_for_timeout(10000)
+        # Esperar carga EDM igual que antes
+        page.wait_for_timeout(6000)
+        # Esperar un poco más para que el estado del candado se actualice
+        page.wait_for_timeout(4000)
 
     # ─── FLUJO PRINCIPAL ────────────────────────────────────────────────────────
 
@@ -193,34 +214,28 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
             # 1. LOGIN
             print(f"[{operador}] Iniciando sesión...")
             login(page)
-            capturar(page, "1_login")
 
             # 2. SELECCIONAR OPERADOR
             print(f"[{operador}] Seleccionando operador...")
             seleccionar_operador(page, operador)
-            capturar(page, "2_operador")
 
             # 3. ABRIR DEVICE QUERY
             print(f"[{operador}] Abriendo Device Query...")
             abrir_device_query(page)
-            capturar(page, "3_device_query")
 
             # 4. QUERY CON LA SERIE
-            print(f"[{operador}] Buscando serie {serial}...")
+            print(f"[{operador}] Ejecutando Query para serie {serial}...")
             ejecutar_query(page, serial)
-            capturar(page, "4_query_resultado")
 
-            # 5. VALIDAR DATOS REALES
-            # IMPORTANTE: "Device Binding not found" puede aparecer siempre,
-            # incluso cuando hay datos reales. No es criterio de fallo.
-            # El criterio real es: ¿aparece Device Status?
-            print(f"[{operador}] Validando datos reales...")
+            # 5. ESPERAR Y VALIDAR DATOS REALES
+            print(f"[{operador}] Esperando carga de datos EDM...")
             hay_datos = tiene_data_real(page)
 
             if not hay_datos:
-                capturar(page, "5_sin_datos")
+                # Screenshot enfocado en Results para ver el error
+                capturar(page, "sin_datos", selector_foco="text=Results")
                 browser.close()
-                print(f"[{operador}] Sin datos reales para {serial}")
+                print(f"[{operador}] ❌ Sin datos para {serial}")
                 return {
                     "exito": False,
                     "sin_datos_edm": True,
@@ -234,13 +249,13 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
                     )
                 }
 
-            # 6. HAY DATOS → UNLOCK
-            capturar(page, "5_datos_ok")
-            print(f"[{operador}] Datos confirmados. Ejecutando Unlock...")
+            # 6. DATOS ENCONTRADOS → UNLOCK
+            print(f"[{operador}] ✅ Datos encontrados. Ejecutando Unlock...")
             unlock_ok = ejecutar_unlock(page)
-            capturar(page, "6_post_unlock")
 
             if not unlock_ok:
+                # Screenshot enfocado en Operations para ver por qué no hay Unlock
+                capturar(page, "sin_unlock", selector_foco="text=Operations")
                 browser.close()
                 return {
                     "exito": False,
@@ -253,13 +268,14 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
                     )
                 }
 
-            # 7. QUERY FINAL → verificar candado rojo → verde
+            # 7. QUERY FINAL → verificar candado
             print(f"[{operador}] Query final para verificar estado...")
             try:
                 ejecutar_query_final(page)
-                capturar(page, "7_resultado_final")
+                # Screenshot enfocado en Device Status para ver el candado
+                capturar(page, "resultado_final", selector_foco="text=Device Status")
             except PlaywrightTimeoutError:
-                capturar(page, "7_error_query_final")
+                capturar(page, "error_query_final", selector_foco="text=Results")
                 browser.close()
                 return {
                     "exito": False,
@@ -274,7 +290,7 @@ def consultar_y_desbloquear(operador: str, serial: str) -> dict:
                 }
 
             browser.close()
-            print(f"[{operador}] ✅ Completado exitosamente para {serial}")
+            print(f"[{operador}] ✅ Proceso completado para {serial}")
             return {
                 "exito": True,
                 "sin_datos_edm": False,
