@@ -18,16 +18,46 @@ def consultar_y_desbloquear(serial: str) -> dict:
         screenshots.append(path)
 
     def tiene_data_real(page):
-        texto = page.inner_text("body").upper()
-        indicadores_validos = [
+        selectores_validos = [
+            "text=Device Status",
+            "text=STB basic status",
+            "text=Remote Control Unit",
+            "text=TiVo Remote",
+            "text=Connected",
+            "text=Customer Information",
+            "text=TiVO Contract Details",
+            "text=Device Metadata",
+        ]
+
+        textos_validos = [
             "DEVICE STATUS",
             "STB BASIC STATUS",
             "REMOTE CONTROL UNIT",
+            "TIVO REMOTE",
+            "CONNECTED",
             "CUSTOMER INFORMATION",
             "TIVO CONTRACT DETAILS",
-            "DEVICE METADATA"
+            "DEVICE METADATA",
         ]
-        return any(indicador in texto for indicador in indicadores_validos)
+
+        for _ in range(20):
+            for selector in selectores_validos:
+                try:
+                    if page.locator(selector).count() > 0:
+                        return True
+                except Exception:
+                    pass
+
+            try:
+                texto = page.inner_text("body").upper()
+                if any(indicador in texto for indicador in textos_validos):
+                    return True
+            except Exception:
+                pass
+
+            page.wait_for_timeout(1000)
+
+        return False
 
     def ir_a_inicio(page):
         page.goto(URL, timeout=30000)
@@ -38,17 +68,20 @@ def consultar_y_desbloquear(serial: str) -> dict:
             page.locator("select").select_option(label="Producción @ Claro, Chile")
         elif operador == "VTR":
             page.locator("select").select_option(label="Producción @ VTR, Chile")
+
         page.wait_for_timeout(4000)
 
     def abrir_device_query(page):
         page.get_by_text("Query User", exact=True).click()
         page.wait_for_timeout(1500)
+
         page.get_by_text("Device Query", exact=True).click()
         page.wait_for_timeout(4000)
 
     def buscar_serial(page, serial):
         search_input = page.locator("input:visible").last
         search_input.fill(serial)
+
         page.wait_for_timeout(1000)
 
         query_btn = page.locator(
@@ -57,6 +90,7 @@ def consultar_y_desbloquear(serial: str) -> dict:
 
         query_btn.wait_for(timeout=10000)
         query_btn.click()
+
         page.wait_for_timeout(9000)
 
         return query_btn
@@ -200,4 +234,3 @@ def consultar_y_desbloquear(serial: str) -> dict:
                 f"Detalle técnico: {str(e)}"
             )
         }
-
