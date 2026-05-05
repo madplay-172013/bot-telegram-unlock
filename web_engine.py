@@ -1,7 +1,7 @@
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import os
 
-URL = "https://webops.clbo-hubtv.com/index.php"
+URL = os.getenv("WEB_URL")
 USUARIO = os.getenv("WEB_USER")
 PASSWORD = os.getenv("WEB_PASS")
 
