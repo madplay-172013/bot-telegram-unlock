@@ -2,8 +2,8 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 import os
 
 URL = "https://webops.clbo-hubtv.com/index.php"
-USUARIO = os.getenv("WEB_USER", "ssalgadclvt")
-PASSWORD = os.getenv("WEB_PASS", "SSalgado87")
+USUARIO = os.getenv("WEB_USER")
+PASSWORD = os.getenv("WEB_PASS")
 
 SCREENSHOTS_DIR = "/tmp/screenshots"
 os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
